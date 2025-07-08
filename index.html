@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Globe with Satellite Communication Links</title>
     <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="libs/tailwindcss.js"></script>
     <!-- D3.js CDN -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="libs/d3.v7.js"></script>
     <!-- TopoJSON CDN -->
-    <script src="https://unpkg.com/topojson@3"></script>
+    <script src="libs/topojson.js"></script>
     <!-- Chart.js CDN for data visualization -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="libs/chart.js"></script>
     <style>
         html, body {
             height: 100%;
@@ -332,7 +332,7 @@
 
             const projection = d3.geoOrthographic();
             const path = d3.geoPath(projection, context);
-            const world = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
+            const world = await d3.json("libs/countries-110m.json");
             const land = topojson.feature(world, world.objects.land);
             
             const rttChartCtx = document.getElementById('rttChart').getContext('2d');
@@ -564,6 +564,28 @@
         }
 
         window.onload = createGlobe;
+
+        // // 建立WebSocket连接
+        // const ws = new WebSocket("ws://localhost:8080/ws");
+
+        // // 连接成功
+        // ws.onopen = () => {
+        //     console.log("WebSocket连接已建立");
+        //     // 可以发送初始化请求
+        //     ws.send(JSON.stringify({type: "init"}));
+        // };
+
+        // // 接收消息
+        // ws.onmessage = (event) => {
+        //     const msg = JSON.parse(event.data);
+        //     console.log("收到后端消息:", msg);
+        //     // 这里可以根据msg内容更新前端可视化
+        // };
+
+        // // 发送仿真请求示例
+        // function sendSimulationRequest(params) {
+        //     ws.send(JSON.stringify({type: "simulate", params}));
+        // }
     </script>
 </body>
 </html>
