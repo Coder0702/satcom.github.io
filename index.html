@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Globe with Satellite Communication Links</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- D3.js CDN -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- TopoJSON CDN -->
+    <script src="https://unpkg.com/topojson@3"></script>
+    <!-- Chart.js CDN for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background-color: #f8fafc;
+        }
+        body { font-family: "Inter", sans-serif; }
+        canvas {
+            display: block;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
+            cursor: grab;
+            width: 100%;
+            height: auto;
+        }
+        canvas.dragging { cursor: grabbing; }
+        .control-group label {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            color: #1e40af;
+        }
+        .control-group input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1e40af;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .toggle-button {
+            background-color: #1e40af;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .toggle-button:hover { background-color: #1e3a8a; }
+    </style>
+</head>
+<body class="p-4">
+    <div class="flex h-full w-full gap-4">
+        <!-- Left Column: Globe and Controls -->
+        <div class="w-1/2 flex flex-col gap-4">
+            <div class="bg-white rounded-lg shadow p-4 flex-grow flex flex-col">
+                <h1 class="text-2xl font-bold text-gray-800 mb-4 text-center">星地、星间通信网络仿真</h1>
+                <div class="flex-grow relative">
+                     <canvas id="globeCanvas"></canvas>
+                </div>
+                <!-- Controls Section -->
+                <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 mt-4">
+                    <div class="control-group">
+                        <label for="numOrbits" class="text-sm">轨道数量: <span id="numOrbitsValue">5</span></label>
+                        <input type="range" id="numOrbits" min="1" max="10" value="5">
+                    </div>
+                    <div class="control-group">
+                        <label for="orbitInclinationDeg" class="text-sm">轨道倾角: <span id="orbitInclinationDegValue">60</span>°</label>
+                        <input type="range" id="orbitInclinationDeg" min="0" max="90" value="60">
+                    </div>
+                    <div class="control-group">
+                        <label for="satellitesPerOrbit" class="text-sm">每轨道卫星数: <span id="satellitesPerOrbitValue">15</span></label>
+                        <input type="range" id="satellitesPerOrbit" min="1" max="50" value="15">
+                    </div>
+                    <div class="control-group">
+                        <label for="orbitalHeightKm" class="text-sm">轨道高度 (km): <span id="orbitalHeightKmValue">550</span></label>
+                        <input type="range" id="orbitalHeightKm" min="200" max="2000" value="550">
+                    </div>
+                    <div class="control-group col-span-full">
+                        <label for="timeScale" class="text-sm">时间快进: <span id="timeScaleValue">1.0</span>x</label>
+                        <input type="range" id="timeScale" min="0" max="200" step="1" value="1">
+                    </div>
+                </div>
+                 <div class="flex flex-wrap gap-2 justify-center mt-2">
+                    <button id="toggleEarthRotationBtn" class="toggle-button">开启地球自转</button>
+                    <button id="toggleSatelliteTrailsBtn" class="toggle-button">显示卫星轨迹</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Data and Logs -->
+        <div class="w-1/2 flex flex-col gap-4">
+            <!-- Top Right: Charts -->
+            <div class="h-1/2 flex gap-4">
+                <div class="w-1/2 bg-white rounded-lg shadow p-4 flex flex-col">
+                    <h3 class="font-bold text-gray-700 text-center">端到端 RTT (ms)</h3>
+                    <div class="flex-grow mt-2">
+                        <canvas id="rttChart"></canvas>
+                    </div>
+                </div>
+                <div class="w-1/2 bg-white rounded-lg shadow p-4">
+                    <h3 class="font-bold text-gray-700 text-center">实时数据图 2</h3>
+                    <div class="w-full h-5/6 border-2 border-dashed border-gray-300 rounded-md mt-2"></div>
+                </div>
+            </div>
+            <!-- Bottom Right: Event Log -->
+            <div class="h-1/2 bg-white rounded-lg shadow p-4 flex flex-col">
+                <h3 class="font-bold text-gray-700 text-center mb-2">实时事件日志</h3>
+                <div id="event-log" class="flex-grow border-2 border-gray-200 rounded-md p-2 overflow-y-auto bg-gray-50 text-sm">
+                    <p class="text-gray-500">[事件日志初始化...]<p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // --- GLOBAL CONFIGURATION ---
+        let numOrbits = 5, orbitInclinationDeg = 60, satellitesPerOrbit = 15, orbitalHeightKm = 550;
+        let timeScale = 1.0, isEarthRotatingAutomatically = false, showSatelliteTrails = false;
+
+        // --- CONSTANTS ---
+        const EARTH_RADIUS_KM = 6371;
+        const MU = 3.986004418e14; // m^3/s^2
+        const EARTH_ROTATION_PERIOD_SECONDS = 23.9344696 * 3600; // Sidereal day
+        const EARTH_ROTATION_SPEED = (2 * Math.PI) / EARTH_ROTATION_PERIOD_SECONDS; // rad/s
+        const C_LIGHT_KM_S = 299792.458; // Speed of light in km/s
+
+        // --- GROUND STATIONS DEFINITION ---
+        const groundStations = [
+            { name: "北京", lon: 116.4074, lat: 39.9042 },
+            { name: "纽约", lon: -74.0060, lat: 40.7128 },
+            { name: "伦敦", lon: -0.1278, lat: 51.5074 },
+            { name: "悉尼", lon: 151.2093, lat: -33.8688 },
+        ];
+        
+        // --- STATE VARIABLES ---
+        let satellites = [], orbits = [];
+        let earthRotationOffset = 0, simulationStartTime = 0, lastElapsed = 0;
+        let viewRotation = [10, -20, 0];
+        let lastPathIdentifier = "";
+
+        // --- UTILITY FUNCTIONS ---
+        const getOrbitalPeriodSeconds = (h) => 2 * Math.PI * Math.sqrt(Math.pow((EARTH_RADIUS_KM + h) * 1000, 3) / MU);
+        const toRadians = (deg) => deg * Math.PI / 180;
+        const toDegrees = (rad) => rad * 180 / Math.PI;
+
+        function geoToCartesian(point, radius = 1) {
+            const lambda = toRadians(point[0]); // longitude
+            const phi = toRadians(point[1]);    // latitude
+            const cosPhi = Math.cos(phi);
+            return [
+                radius * cosPhi * Math.cos(lambda),
+                radius * cosPhi * Math.sin(lambda),
+                radius * Math.sin(phi)
+            ];
+        }
+
+        function rotateVectorZ(vector, angle) {
+            const [x, y, z] = vector;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            const newX = x * cosA - y * sinA;
+            const newY = x * sinA + y * cosA;
+            return { x: newX, y: newY, z: z };
+        }
+
+
+        // --- CORE LOGIC ---
+        function generateSatellitesAndOrbits() {
+            satellites = [];
+            orbits = [];
+            const orbitalPeriodSeconds = getOrbitalPeriodSeconds(orbitalHeightKm);
+            simulationStartTime = performance.now() / 1000;
+            const raanRange = (orbitInclinationDeg === 90) ? 180 : 360;
+            for (let i = 0; i < numOrbits; i++) {
+                const raanOffsetDeg = (i * raanRange / numOrbits);
+                orbits.push({ type: "LineString", coordinates: generateGreatCircle(orbitInclinationDeg, raanOffsetDeg) });
+                for (let j = 0; j < satellitesPerOrbit; j++) {
+                    const phaseOffset = (i % 2 === 0) ? 0 : 180 / satellitesPerOrbit;
+                    const initialTrueAnomalyRad = ((j / satellitesPerOrbit) * 2 * Math.PI) + toRadians(phaseOffset);
+                    satellites.push({ id: `${i}-${j}`, initialTrueAnomalyRad, inclinationDeg: orbitInclinationDeg, raanDeg: raanOffsetDeg, orbitalPeriodSeconds, inertialTrail: [], maxTrailPoints: 100 });
+                }
+            }
+            lastElapsed = 0;
+            earthRotationOffset = 0;
+        }
+
+        function generateGreatCircle(inclinationDeg, raanDeg, numPoints = 100) {
+            const points = [];
+            const inclinationRad = toRadians(inclinationDeg);
+            const raanRad = toRadians(raanDeg);
+            for (let i = 0; i <= numPoints; i++) {
+                const trueAnomalyRad = (i / numPoints) * 2 * Math.PI;
+                const latRad = Math.asin(Math.sin(inclinationRad) * Math.sin(trueAnomalyRad));
+                const lonRad = raanRad + Math.atan2(Math.cos(inclinationRad) * Math.sin(trueAnomalyRad), Math.cos(trueAnomalyRad));
+                points.push([toDegrees(lonRad), toDegrees(latRad)]);
+            }
+            return points;
+        }
+
+        // NEW: Function to get physically adjacent satellite neighbors
+        function getSatelliteNeighbors(centerSat, allSatellites) {
+            const neighbors = new Set();
+            if (!centerSat) return [];
+            const [orbitIdx, satIdx] = centerSat.id.split('-').map(Number);
+
+            // 1. Intra-plane neighbors (ahead and behind)
+            const nextInOrbitId = `${orbitIdx}-${(satIdx + 1) % satellitesPerOrbit}`;
+            const prevInOrbitId = `${orbitIdx}-${(satIdx - 1 + satellitesPerOrbit) % satellitesPerOrbit}`;
+            
+            const nextSat = allSatellites.find(s => s.id === nextInOrbitId);
+            const prevSat = allSatellites.find(s => s.id === prevInOrbitId);
+            if (nextSat) neighbors.add(nextSat);
+            if (prevSat) neighbors.add(prevSat);
+
+            // 2. Inter-plane neighbors (closest in adjacent orbits)
+            const nextOrbitIdx = (orbitIdx + 1) % numOrbits;
+            const prevOrbitIdx = (orbitIdx - 1 + numOrbits) % numOrbits;
+
+            const findClosestInOrbit = (targetOrbitIdx) => {
+                const targetSats = allSatellites.filter(s => s.id.startsWith(`${targetOrbitIdx}-`));
+                let closestSat = null;
+                let min_dist = Infinity;
+                targetSats.forEach(s => {
+                    const dist = Math.hypot(centerSat.pos.x - s.pos.x, centerSat.pos.y - s.pos.y, centerSat.pos.z - s.pos.z);
+                    if (dist < min_dist) {
+                        min_dist = dist;
+                        closestSat = s;
+                    }
+                });
+                return closestSat;
+            };
+
+            const closestInNext = findClosestInOrbit(nextOrbitIdx);
+            const closestInPrev = findClosestInOrbit(prevOrbitIdx);
+            if (closestInNext) neighbors.add(closestInNext);
+            if (closestInPrev) neighbors.add(closestInPrev);
+
+            return Array.from(neighbors);
+        }
+
+        // MODIFIED: Dijkstra's algorithm now uses the neighbor function
+        function findShortestPath(allSatellites, startNodeId, endNodeId) {
+            let distances = {};
+            let prev = {};
+            let pq = new Set();
+
+            allSatellites.forEach(node => {
+                distances[node.id] = Infinity;
+                prev[node.id] = null;
+            });
+
+            distances[startNodeId] = 0;
+            pq.add(startNodeId);
+
+            while (pq.size > 0) {
+                let closestNodeId = [...pq].reduce((a, b) => distances[a] < distances[b] ? a : b);
+                pq.delete(closestNodeId);
+
+                if (closestNodeId === endNodeId) {
+                    let path = [];
+                    let current = endNodeId;
+                    while (current) {
+                        path.unshift(current);
+                        current = prev[current];
+                    }
+                    return { path, distance: distances[endNodeId] };
+                }
+
+                if (distances[closestNodeId] === Infinity) break;
+                
+                const closestNode = allSatellites.find(n => n.id === closestNodeId);
+                const neighbors = getSatelliteNeighbors(closestNode, allSatellites);
+                
+                neighbors.forEach(neighborNode => {
+                    if (!neighborNode) return;
+                    
+                    const dist = Math.hypot(
+                        closestNode.pos.x - neighborNode.pos.x, 
+                        closestNode.pos.y - neighborNode.pos.y, 
+                        closestNode.pos.z - neighborNode.pos.z
+                    );
+
+                    let alt = distances[closestNodeId] + dist;
+                    if (alt < distances[neighborNode.id]) {
+                        distances[neighborNode.id] = alt;
+                        prev[neighborNode.id] = closestNodeId;
+                        pq.add(neighborNode.id);
+                    }
+                });
+            }
+            return null; // No path found
+        }
+        
+        // --- MAIN GLOBE RENDERING ---
+        async function createGlobe() {
+            const canvas = document.getElementById('globeCanvas');
+            const context = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            let width, height;
+
+            function resizeCanvas() {
+                width = canvas.parentElement.clientWidth;
+                height = width;
+                canvas.width = dpr * width;
+                canvas.height = dpr * height;
+                canvas.style.width = `${width}px`;
+                canvas.style.height = `${height}px`;
+                context.scale(dpr, dpr);
+            }
+
+            const projection = d3.geoOrthographic();
+            const path = d3.geoPath(projection, context);
+            const world = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
+            const land = topojson.feature(world, world.objects.land);
+            
+            const rttChartCtx = document.getElementById('rttChart').getContext('2d');
+            const rttChart = new Chart(rttChartCtx, {
+                type: 'line',
+                data: { labels: [], datasets: [{ label: 'RTT (ms)', data: [], borderColor: '#1e40af', borderWidth: 2, fill: false, tension: 0.4, pointRadius: 0 }] },
+                options: { animation: false, scales: { x: { display: false }, y: { beginAtZero: false, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false } } }
+            });
+            const eventLog = document.getElementById('event-log');
+            function logEvent(message) {
+                const p = document.createElement('p');
+                p.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+                eventLog.appendChild(p);
+                eventLog.scrollTop = eventLog.scrollHeight;
+            }
+            
+            // --- RENDER LOOP ---
+            function render(elapsed) {
+                const simulationTime = (performance.now() / 1000 - simulationStartTime) * timeScale;
+                context.clearRect(0, 0, width, height);
+
+                if (isEarthRotatingAutomatically) {
+                    earthRotationOffset = (EARTH_ROTATION_SPEED * simulationTime) % (2 * Math.PI);
+                }
+                const earthPhysicalRotationDeg = toDegrees(earthRotationOffset);
+                const earthViewRotation = [viewRotation[0] - earthPhysicalRotationDeg, viewRotation[1], viewRotation[2]];
+                projection.rotate(earthViewRotation).fitExtent([[10, 10], [width - 10, height - 10]], { type: "Sphere" });
+                
+                const earthRadius = projection.scale();
+                context.beginPath();
+                path({ type: "Sphere" });
+                const earthGradient = context.createRadialGradient(width/2 - earthRadius*0.2, height/2 - earthRadius*0.2, earthRadius*0.1, width/2, height/2, earthRadius);
+                earthGradient.addColorStop(0, '#bfdbfe');
+                earthGradient.addColorStop(1, '#93c5fd');
+                context.fillStyle = earthGradient;
+                context.fill();
+                context.beginPath();
+                path(land);
+                context.fillStyle = "#f5f5f4";
+                context.fill();
+
+                const earthRotationMatrix = d3.geoRotation(earthViewRotation).invert;
+                
+                groundStations.forEach(gs => {
+                    const [x, y, z] = geoToCartesian([gs.lon, gs.lat], EARTH_RADIUS_KM);
+                    gs.pos = { x, y, z };
+                });
+
+                const orbitRadius = EARTH_RADIUS_KM + orbitalHeightKm;
+                satellites.forEach(sat => {
+                    const angularVelocity = (2 * Math.PI / sat.orbitalPeriodSeconds);
+                    const currentTrueAnomalyRad = (sat.initialTrueAnomalyRad + angularVelocity * simulationTime) % (2 * Math.PI);
+                    
+                    const inclinationRad = toRadians(sat.inclinationDeg);
+                    const latRad = Math.asin(Math.sin(inclinationRad) * Math.sin(currentTrueAnomalyRad));
+                    const lonRad = toRadians(sat.raanDeg) + Math.atan2(Math.cos(inclinationRad) * Math.sin(currentTrueAnomalyRad), Math.cos(currentTrueAnomalyRad));
+                    
+                    sat.coords = [toDegrees(lonRad), toDegrees(latRad)];
+                    const [x, y, z] = geoToCartesian(sat.coords, orbitRadius);
+                    sat.pos = { x, y, z };
+                });
+                
+                const visibleSatellites = satellites.filter(sat => d3.geoDistance(sat.coords, projection.invert([width/2, height/2])) < Math.PI / 2);
+
+                groundStations.forEach(gs => {
+                    let closestSat = null;
+                    let minDistance = Infinity;
+                    gs.visibleSatellites = [];
+                    
+                    const rotatedGsPos = rotateVectorZ([gs.pos.x, gs.pos.y, gs.pos.z], earthRotationOffset);
+
+                    visibleSatellites.forEach(sat => {
+                        const toSatVec = { x: sat.pos.x - rotatedGsPos.x, y: sat.pos.y - rotatedGsPos.y, z: sat.pos.z - rotatedGsPos.z };
+                        const dotProduct = rotatedGsPos.x * toSatVec.x + rotatedGsPos.y * toSatVec.y + rotatedGsPos.z * toSatVec.z;
+                        
+                        if (dotProduct > 0) {
+                            const distance = Math.hypot(toSatVec.x, toSatVec.y, toSatVec.z);
+                            gs.visibleSatellites.push({sat, distance});
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                closestSat = sat;
+                            }
+                        }
+                    });
+                    gs.primaryLink = closestSat ? { sat: closestSat, distance: minDistance } : null;
+                });
+                
+                const sourceGS = groundStations[0];
+                const destGS = groundStations[1];
+                let endToEndPath = null;
+                let totalDistance = 0;
+
+                if (sourceGS.primaryLink && destGS.primaryLink) {
+                    const startSatId = sourceGS.primaryLink.sat.id;
+                    const endSatId = destGS.primaryLink.sat.id;
+                    
+                    // MODIFIED: Pass the full satellite list to Dijkstra's
+                    const pathResult = findShortestPath(satellites, startSatId, endSatId);
+                    
+                    if (pathResult) {
+                        endToEndPath = pathResult.path.map(id => satellites.find(s => s.id === id));
+                        totalDistance = sourceGS.primaryLink.distance + pathResult.distance + destGS.primaryLink.distance;
+                    }
+                }
+                
+                const satelliteProjection = d3.geoOrthographic().fitExtent([[10, 10], [width - 10, height - 10]], { type: "Sphere" }).rotate(viewRotation).scale(projection.scale() * (orbitRadius/EARTH_RADIUS_KM));
+                const satellitePath = d3.geoPath(satelliteProjection, context);
+
+                context.strokeStyle = "#64748b"; context.lineWidth = 0.8; context.setLineDash([2, 2]);
+                orbits.forEach(orbit => { context.beginPath(); satellitePath(orbit); context.stroke(); });
+                context.setLineDash([]);
+                
+                groundStations.forEach(gs => {
+                    const p = projection([gs.lon, gs.lat]);
+                    if (p && d3.geoDistance([gs.lon, gs.lat], earthRotationMatrix([width/2, height/2])) < Math.PI / 2) {
+                        context.beginPath();
+                        context.arc(p[0], p[1], 5, 0, 2 * Math.PI);
+                        context.fillStyle = "#00008B";
+                        context.fill();
+                        context.strokeStyle = "white";
+                        context.lineWidth = 1.5;
+                        context.stroke();
+                    }
+                });
+                
+                groundStations.forEach(gs => {
+                    gs.visibleSatellites.forEach(link => {
+                        const isPrimary = gs.primaryLink && gs.primaryLink.sat.id === link.sat.id;
+                        const p_gs = projection([gs.lon, gs.lat]);
+                        const p_sat = satelliteProjection(link.sat.coords);
+                        if(p_gs && p_sat) {
+                            context.beginPath();
+                            context.moveTo(p_gs[0], p_gs[1]);
+                            context.lineTo(p_sat[0], p_sat[1]);
+                            context.strokeStyle = isPrimary ? "rgba(255, 0, 0, 0.9)" : "rgba(255, 0, 0, 0.2)";
+                            context.lineWidth = isPrimary ? 1.5 : 0.5;
+                            context.stroke();
+                        }
+                    });
+                });
+                
+                if (endToEndPath && endToEndPath.length > 1) {
+                    context.beginPath();
+                    for(let i=0; i < endToEndPath.length - 1; i++) {
+                        const p1 = satelliteProjection(endToEndPath[i].coords);
+                        const p2 = satelliteProjection(endToEndPath[i+1].coords);
+                        if (p1 && p2) {
+                            context.moveTo(p1[0], p1[1]);
+                            context.lineTo(p2[0], p2[1]);
+                        }
+                    }
+                    context.strokeStyle = "#00FF00";
+                    context.lineWidth = 2.5;
+                    context.stroke();
+                }
+
+                visibleSatellites.forEach(sat => {
+                    const p = satelliteProjection(sat.coords);
+                    if (p) {
+                        context.beginPath();
+                        context.arc(p[0], p[1], 2, 0, 2 * Math.PI);
+                        context.fillStyle = "#ef4444";
+                        context.fill();
+                    }
+                });
+
+                let rtt = 0;
+                const currentPathIdentifier = endToEndPath ? endToEndPath.map(s => s.id).join('-') : "none";
+                if (totalDistance > 0) {
+                    rtt = (totalDistance / C_LIGHT_KM_S) * 2 * 1000;
+                    rtt += Math.random() * 10;
+                    if (currentPathIdentifier !== lastPathIdentifier && lastPathIdentifier !== "") {
+                        rtt += 50 + Math.random() * 20;
+                        logEvent(`路径切换: ${sourceGS.name} ↔ ${destGS.name}. 新路径: ${currentPathIdentifier.replace(/-/g, ' → ')}`);
+                    }
+                }
+                lastPathIdentifier = currentPathIdentifier;
+
+                rttChart.data.labels.push("");
+                rttChart.data.datasets[0].data.push(rtt > 0 ? rtt : null);
+                if (rttChart.data.labels.length > 50) {
+                    rttChart.data.labels.shift();
+                    rttChart.data.datasets[0].data.shift();
+                }
+                rttChart.update();
+            }
+
+            d3.timer(render);
+            const observer = new ResizeObserver(resizeCanvas);
+            observer.observe(canvas.parentElement);
+            
+            document.getElementById('numOrbits').addEventListener('input', (e) => { numOrbits = parseInt(e.target.value); document.getElementById('numOrbitsValue').textContent = numOrbits; generateSatellitesAndOrbits(); });
+            document.getElementById('orbitInclinationDeg').addEventListener('input', (e) => { orbitInclinationDeg = parseInt(e.target.value); document.getElementById('orbitInclinationDegValue').textContent = orbitInclinationDeg; generateSatellitesAndOrbits(); });
+            document.getElementById('satellitesPerOrbit').addEventListener('input', (e) => { satellitesPerOrbit = parseInt(e.target.value); document.getElementById('satellitesPerOrbitValue').textContent = satellitesPerOrbit; generateSatellitesAndOrbits(); });
+            document.getElementById('orbitalHeightKm').addEventListener('input', (e) => { orbitalHeightKm = parseInt(e.target.value); document.getElementById('orbitalHeightKmValue').textContent = orbitalHeightKm; generateSatellitesAndOrbits(); });
+            document.getElementById('timeScale').addEventListener('input', (e) => { const currentTime = (performance.now() / 1000 - simulationStartTime) * timeScale; timeScale = parseFloat(e.target.value); document.getElementById('timeScaleValue').textContent = timeScale.toFixed(1); if (timeScale > 0) { simulationStartTime = performance.now() / 1000 - (currentTime / timeScale); } });
+            document.getElementById('toggleEarthRotationBtn').addEventListener('click', () => { isEarthRotatingAutomatically = !isEarthRotatingAutomatically; const button = document.getElementById('toggleEarthRotationBtn'); button.textContent = isEarthRotatingAutomatically ? "关闭地球自转" : "开启地球自转"; button.style.backgroundColor = isEarthRotatingAutomatically ? '#dc2626' : '#1e40af'; });
+            document.getElementById('toggleSatelliteTrailsBtn').addEventListener('click', () => { showSatelliteTrails = !showSatelliteTrails; const button = document.getElementById('toggleSatelliteTrailsBtn'); button.textContent = showSatelliteTrails ? "隐藏卫星轨迹" : "显示卫星轨迹"; button.style.backgroundColor = showSatelliteTrails ? '#dc2626' : '#1e40af'; });
+
+            let isDragging = false;
+            let startMouseX, startMouseY, initialRotation;
+            canvas.addEventListener('mousedown', (event) => {
+                isDragging = true;
+                canvas.classList.add('dragging');
+                startMouseX = event.clientX;
+                startMouseY = event.clientY;
+                initialRotation = [...viewRotation];
+            });
+            canvas.addEventListener('mousemove', (event) => {
+                if (!isDragging) return;
+                const deltaX = event.clientX - startMouseX;
+                const deltaY = event.clientY - startMouseY;
+                const sensitivity = 0.2;
+                const newLambda = initialRotation[0] + deltaX * sensitivity;
+                let newPhi = initialRotation[1] - deltaY * sensitivity;
+                newPhi = Math.max(-90, Math.min(90, newPhi));
+                viewRotation = [newLambda, newPhi, initialRotation[2]];
+            });
+            const stopDragging = () => {
+                isDragging = false;
+                canvas.classList.remove('dragging');
+            };
+            canvas.addEventListener('mouseup', stopDragging);
+            canvas.addEventListener('mouseout', stopDragging);
+
+            generateSatellitesAndOrbits();
+            resizeCanvas();
+            logEvent(`仿真开始。端到端通信链路: ${groundStations[0].name} ↔ ${groundStations[1].name}`);
+        }
+
+        window.onload = createGlobe;
+    </script>
+</body>
+</html>
