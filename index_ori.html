@@ -76,47 +76,35 @@
         <div class="w-1/2 flex flex-col gap-4">
             <div class="bg-white rounded-lg shadow p-4 flex-grow flex flex-col">
                 <h1 class="text-2xl font-bold text-gray-800 mb-4 text-center">星地、星间通信网络仿真</h1>
-                <div class="w-full aspect-square">
-                    <canvas id="globeCanvas" class="w-full h-full"></canvas>
+                <div class="flex-grow relative">
+                     <canvas id="globeCanvas"></canvas>
                 </div>
-                
                 <!-- Controls Section -->
-                <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
-                    <div class="control-group">
-                        <label for="sourceSelect" class="text-sm">起点地面站</label>
-                        <select id="sourceSelect" class="w-full mt-1 border border-gray-300 rounded p-1 text-sm">
-                            <option value="北京">北京</option>
-                            <option value="纽约">纽约</option>
-                            <option value="伦敦">伦敦</option>
-                            <option value="悉尼">悉尼</option>
-                        </select>
-                    </div>
-                    <div class="control-group">
-                        <label for="destinationSelect" class="text-sm">终点地面站</label>
-                        <select id="destinationSelect" class="w-full mt-1 border border-gray-300 rounded p-1 text-sm">
-                            <option value="纽约">纽约</option>
-                            <option value="伦敦">伦敦</option>
-                            <option value="悉尼">悉尼</option>
-                        </select>
-                    </div>
-                </div>
                 <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 mt-4">
+                    <div class="control-group">
+                        <label for="numOrbits" class="text-sm">轨道数量: <span id="numOrbitsValue">5</span></label>
+                        <input type="range" id="numOrbits" min="1" max="10" value="5">
+                    </div>
                     <div class="control-group">
                         <label for="orbitInclinationDeg" class="text-sm">轨道倾角: <span id="orbitInclinationDegValue">60</span>°</label>
                         <input type="range" id="orbitInclinationDeg" min="0" max="90" value="60">
+                    </div>
+                    <div class="control-group">
+                        <label for="satellitesPerOrbit" class="text-sm">每轨道卫星数: <span id="satellitesPerOrbitValue">15</span></label>
+                        <input type="range" id="satellitesPerOrbit" min="1" max="50" value="15">
                     </div>
                     <div class="control-group">
                         <label for="orbitalHeightKm" class="text-sm">轨道高度 (km): <span id="orbitalHeightKmValue">550</span></label>
                         <input type="range" id="orbitalHeightKm" min="200" max="2000" value="550">
                     </div>
                     <div class="control-group col-span-full">
-                        <label for="timeScale" class="text-sm">时间快进: <span id="timeScaleValue">10.0</span>x</label>
-                        <input type="range" id="timeScale" min="0" max="200" step="1" value="10">
+                        <label for="timeScale" class="text-sm">时间快进: <span id="timeScaleValue">1.0</span>x</label>
+                        <input type="range" id="timeScale" min="0" max="200" step="1" value="1">
                     </div>
                 </div>
                  <div class="flex flex-wrap gap-2 justify-center mt-2">
-                    <button id="toggleSimulationBtn" class="toggle-button">开始动态演示</button>
-                    <button id="toggleEarthRotationBtn" class="toggle-button">关闭地球自转</button>
+                    <button id="toggleEarthRotationBtn" class="toggle-button">开启地球自转</button>
+                    <button id="toggleSatelliteTrailsBtn" class="toggle-button">显示卫星轨迹</button>
                 </div>
             </div>
         </div>
@@ -128,19 +116,14 @@
                 <div class="w-1/2 bg-white rounded-lg shadow p-4 flex flex-col">
                     <h3 class="font-bold text-gray-700 text-center">端到端 RTT (ms)</h3>
                     <div class="flex-grow mt-2">
-                        <canvas id="rttChart" class="w-full h-full"></canvas>
+                        <canvas id="rttChart"></canvas>
                     </div>
-                    <div class="text-sm text-gray-600 text-center mt-2" id="avgRtt">近100次平均 RTT: -- ms</div>
                 </div>
-                <div class="w-1/2 bg-white rounded-lg shadow p-4 flex flex-col">
-                    <h3 class="font-bold text-gray-700 text-center">实时丢包率 (%)</h3>
-                    <div class="flex-grow mt-2">
-                        <canvas id="lossChart" class="w-full h-full"></canvas>
-                    </div>
-                    <div class="text-sm text-gray-600 text-center mt-2" id="avgLoss">近100次平均丢包率: -- %</div>
+                <div class="w-1/2 bg-white rounded-lg shadow p-4">
+                    <h3 class="font-bold text-gray-700 text-center">实时数据图 2</h3>
+                    <div class="w-full h-5/6 border-2 border-dashed border-gray-300 rounded-md mt-2"></div>
                 </div>
             </div>
-
             <!-- Bottom Right: Event Log -->
             <div class="h-1/2 bg-white rounded-lg shadow p-4 flex flex-col">
                 <h3 class="font-bold text-gray-700 text-center mb-2">实时事件日志</h3>
@@ -153,9 +136,8 @@
     
     <script>
         // --- GLOBAL CONFIGURATION ---
-        let numOrbits = 6, orbitInclinationDeg = 60, satellitesPerOrbit = 40, orbitalHeightKm = 550, simulationTimeOffset = 0;
-        let timeScale = 10.0, isSimulationRunning = false, isEarthRotatingAutomatically = true;
-        let sourceStationName = "北京", destinationStationName = "纽约";
+        let numOrbits = 5, orbitInclinationDeg = 60, satellitesPerOrbit = 15, orbitalHeightKm = 550;
+        let timeScale = 1.0, isEarthRotatingAutomatically = false, showSatelliteTrails = false;
 
         // --- CONSTANTS ---
         const EARTH_RADIUS_KM = 6371;
@@ -163,8 +145,6 @@
         const EARTH_ROTATION_PERIOD_SECONDS = 23.9344696 * 3600; // Sidereal day
         const EARTH_ROTATION_SPEED = (2 * Math.PI) / EARTH_ROTATION_PERIOD_SECONDS; // rad/s
         const C_LIGHT_KM_S = 299792.458; // Speed of light in km/s
-        const sourceSelect = document.getElementById("sourceSelect");
-        const destinationSelect = document.getElementById("destinationSelect");
 
         // --- GROUND STATIONS DEFINITION ---
         const groundStations = [
@@ -184,40 +164,6 @@
         const getOrbitalPeriodSeconds = (h) => 2 * Math.PI * Math.sqrt(Math.pow((EARTH_RADIUS_KM + h) * 1000, 3) / MU);
         const toRadians = (deg) => deg * Math.PI / 180;
         const toDegrees = (rad) => rad * 180 / Math.PI;
-
-        function updateSelectOptions() {
-            const allNames = groundStations.map(g => g.name);
-            const selectedSource = sourceSelect.value;
-            const selectedDest = destinationSelect.value;
-
-            // 更新终点选项，排除起点
-            destinationSelect.innerHTML = "";
-            allNames.filter(n => n !== selectedSource).forEach(name => {
-                const opt = document.createElement("option");
-                opt.value = name;
-                opt.textContent = name;
-                destinationSelect.appendChild(opt);
-            });
-
-            // 保持当前目的地选择项
-            if (selectedDest !== selectedSource && allNames.includes(selectedDest)) {
-                destinationSelect.value = selectedDest;
-            }
-
-            // 更新变量
-            sourceStationName = sourceSelect.value;
-            destinationStationName = destinationSelect.value;
-        }
-
-        sourceSelect.addEventListener("change", () => {
-            updateSelectOptions();
-            sourceStationName = sourceSelect.value;
-            destinationStationName = destinationSelect.value;
-        });
-
-        destinationSelect.addEventListener("change", () => {
-            destinationStationName = destinationSelect.value;
-        });
 
         function geoToCartesian(point, radius = 1) {
             const lambda = toRadians(point[0]); // longitude
@@ -373,7 +319,6 @@
             const context = canvas.getContext('2d');
             const dpr = window.devicePixelRatio || 1;
             let width, height;
-            updateSelectOptions();
 
             function resizeCanvas() {
                 width = canvas.parentElement.clientWidth;
@@ -394,38 +339,8 @@
             const rttChart = new Chart(rttChartCtx, {
                 type: 'line',
                 data: { labels: [], datasets: [{ label: 'RTT (ms)', data: [], borderColor: '#1e40af', borderWidth: 2, fill: false, tension: 0.4, pointRadius: 0 }] },
-                options: { animation: false, scales: { x: { display: false }, y: { beginAtZero: false, ticks: { font: { size: 10 } } }, }, plugins: { legend: { display: false } } }
+                options: { animation: false, scales: { x: { display: false }, y: { beginAtZero: false, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false } } }
             });
-
-            const lossChartCtx = document.getElementById('lossChart').getContext('2d');
-            const lossChart = new Chart(lossChartCtx, {
-                type: 'line',
-                data: { labels: [], datasets: [{ label: '丢包率 (%)', data: [], borderColor: '#dc2626', borderWidth: 2, fill: false, tension: 0.4, pointRadius: 0 }] },
-                options: {
-                    animation: false,
-                    scales: {
-                        x: { display: false },
-                        y: {
-                            beginAtZero: true,
-                            suggestedMin: 0,
-                            suggestedMax: 2,
-                            ticks: { font: { size: 10 } }
-                        },
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
-
-            function updateLossChartYAxis() {
-                const data = lossChart.data.datasets[0].data.filter(v => v !== null && v !== undefined);
-                if (data.length > 0) {
-                    const max = Math.max(...data, 1);
-                    lossChart.options.scales.y.suggestedMax = Math.min(Math.ceil(max * 1.2), 100);
-                } else {
-                    lossChart.options.scales.y.suggestedMax = 10;
-                }
-            }
-
             const eventLog = document.getElementById('event-log');
             function logEvent(message) {
                 const p = document.createElement('p');
@@ -436,19 +351,14 @@
             
             // --- RENDER LOOP ---
             function render(elapsed) {
-                let currentTimestamp = performance.now() / 1000;
-                if (isSimulationRunning) { 
-                    simulationTime = simulationTimeOffset + (currentTimestamp - simulationStartTime) * timeScale;
-                } else {
-                    simulationTime = simulationTimeOffset;
-                }
+                const simulationTime = (performance.now() / 1000 - simulationStartTime) * timeScale;
                 context.clearRect(0, 0, width, height);
 
                 if (isEarthRotatingAutomatically) {
                     earthRotationOffset = (EARTH_ROTATION_SPEED * simulationTime) % (2 * Math.PI);
                 }
                 const earthPhysicalRotationDeg = toDegrees(earthRotationOffset);
-                const earthViewRotation = [viewRotation[0] + earthPhysicalRotationDeg, viewRotation[1], viewRotation[2]];
+                const earthViewRotation = [viewRotation[0] - earthPhysicalRotationDeg, viewRotation[1], viewRotation[2]];
                 projection.rotate(earthViewRotation).fitExtent([[10, 10], [width - 10, height - 10]], { type: "Sphere" });
                 
                 const earthRadius = projection.scale();
@@ -488,43 +398,19 @@
                 const visibleSatellites = satellites.filter(sat => d3.geoDistance(sat.coords, projection.invert([width/2, height/2])) < Math.PI / 2);
 
                 groundStations.forEach(gs => {
-                    // let closestSat = null;
-                    // let minDistance = Infinity;
-                    // gs.visibleSatellites = [];
-                    
-                    // const rotatedGsPos = rotateVectorZ([gs.pos.x, gs.pos.y, gs.pos.z], earthRotationOffset);
-
-                    // visibleSatellites.forEach(sat => {
-                    //     const toSatVec = { x: sat.pos.x - rotatedGsPos.x, y: sat.pos.y - rotatedGsPos.y, z: sat.pos.z - rotatedGsPos.z };
-                    //     const dotProduct = rotatedGsPos.x * toSatVec.x + rotatedGsPos.y * toSatVec.y + rotatedGsPos.z * toSatVec.z;
-                        
-                    //     if (dotProduct > 0) {
-                    //         const distance = Math.hypot(toSatVec.x, toSatVec.y, toSatVec.z);
-                    //         gs.visibleSatellites.push({sat, distance});
-                    //         if (distance < minDistance) {
-                    //             minDistance = distance;
-                    //             closestSat = sat;
-                    //         }
-                    //     }
-                    // });
-                    // gs.primaryLink = closestSat ? { sat: closestSat, distance: minDistance } : null;
-
-                    gs.visibleSatellites = [];
                     let closestSat = null;
                     let minDistance = Infinity;
+                    gs.visibleSatellites = [];
+                    
+                    const rotatedGsPos = rotateVectorZ([gs.pos.x, gs.pos.y, gs.pos.z], earthRotationOffset);
 
-                    satellites.forEach(sat => {
-                        const toSatVec = {
-                            x: sat.pos.x - gs.pos.x,
-                            y: sat.pos.y - gs.pos.y,
-                            z: sat.pos.z - gs.pos.z
-                        };
-                        const dotProduct = gs.pos.x * toSatVec.x + gs.pos.y * toSatVec.y + gs.pos.z * toSatVec.z;
-
-                        if (dotProduct > 0) { // 卫星可见
+                    visibleSatellites.forEach(sat => {
+                        const toSatVec = { x: sat.pos.x - rotatedGsPos.x, y: sat.pos.y - rotatedGsPos.y, z: sat.pos.z - rotatedGsPos.z };
+                        const dotProduct = rotatedGsPos.x * toSatVec.x + rotatedGsPos.y * toSatVec.y + rotatedGsPos.z * toSatVec.z;
+                        
+                        if (dotProduct > 0) {
                             const distance = Math.hypot(toSatVec.x, toSatVec.y, toSatVec.z);
-                            gs.visibleSatellites.push({ sat, distance });
-
+                            gs.visibleSatellites.push({sat, distance});
                             if (distance < minDistance) {
                                 minDistance = distance;
                                 closestSat = sat;
@@ -534,8 +420,8 @@
                     gs.primaryLink = closestSat ? { sat: closestSat, distance: minDistance } : null;
                 });
                 
-                const sourceGS = groundStations.find(gs => gs.name === sourceStationName);
-                const destGS = groundStations.find(gs => gs.name === destinationStationName);
+                const sourceGS = groundStations[0];
+                const destGS = groundStations[1];
                 let endToEndPath = null;
                 let totalDistance = 0;
 
@@ -560,9 +446,8 @@
                 context.setLineDash([]);
                 
                 groundStations.forEach(gs => {
-                    const coords = [gs.lon, gs.lat];
-                    if (d3.geoDistance(coords, projection.invert([width / 2, height / 2])) < Math.PI / 2) {
-                        const p = projection(coords);
+                    const p = projection([gs.lon, gs.lat]);
+                    if (p && d3.geoDistance([gs.lon, gs.lat], earthRotationMatrix([width/2, height/2])) < Math.PI / 2) {
                         context.beginPath();
                         context.arc(p[0], p[1], 5, 0, 2 * Math.PI);
                         context.fillStyle = "#00008B";
@@ -574,17 +459,11 @@
                 });
                 
                 groundStations.forEach(gs => {
-                    const isGsVisible = d3.geoDistance([gs.lon, gs.lat], projection.invert([width / 2, height / 2])) < Math.PI / 2;
-
-                    if (!isGsVisible) return;
-
                     gs.visibleSatellites.forEach(link => {
                         const isPrimary = gs.primaryLink && gs.primaryLink.sat.id === link.sat.id;
-
                         const p_gs = projection([gs.lon, gs.lat]);
                         const p_sat = satelliteProjection(link.sat.coords);
-
-                        if (p_gs && p_sat) {
+                        if(p_gs && p_sat) {
                             context.beginPath();
                             context.moveTo(p_gs[0], p_gs[1]);
                             context.lineTo(p_sat[0], p_sat[1]);
@@ -594,39 +473,15 @@
                         }
                     });
                 });
-
                 
-                // if (endToEndPath && endToEndPath.length > 1) {
-                //     context.beginPath();
-                //     for(let i=0; i < endToEndPath.length - 1; i++) {
-                //         const p1 = satelliteProjection(endToEndPath[i].coords);
-                //         const p2 = satelliteProjection(endToEndPath[i+1].coords);
-                //         if (p1 && p2) {
-                //             context.moveTo(p1[0], p1[1]);
-                //             context.lineTo(p2[0], p2[1]);
-                //         }
-                //     }
-                //     context.strokeStyle = "#00FF00";
-                //     context.lineWidth = 2.5;
-                //     context.stroke();
-                // }
-
-
                 if (endToEndPath && endToEndPath.length > 1) {
                     context.beginPath();
-                    for (let i = 0; i < endToEndPath.length - 1; i++) {
-                        const satA = endToEndPath[i];
-                        const satB = endToEndPath[i + 1];
-                        const visibleA = d3.geoDistance(satA.coords, projection.invert([width/2, height/2])) < Math.PI / 2;
-                        const visibleB = d3.geoDistance(satB.coords, projection.invert([width/2, height/2])) < Math.PI / 2;
-
-                        if (visibleA && visibleB) {
-                            const p1 = satelliteProjection(satA.coords);
-                            const p2 = satelliteProjection(satB.coords);
-                            if (p1 && p2) {
-                                context.moveTo(p1[0], p1[1]);
-                                context.lineTo(p2[0], p2[1]);
-                            }
+                    for(let i=0; i < endToEndPath.length - 1; i++) {
+                        const p1 = satelliteProjection(endToEndPath[i].coords);
+                        const p2 = satelliteProjection(endToEndPath[i+1].coords);
+                        if (p1 && p2) {
+                            context.moveTo(p1[0], p1[1]);
+                            context.lineTo(p2[0], p2[1]);
                         }
                     }
                     context.strokeStyle = "#00FF00";
@@ -645,37 +500,20 @@
                 });
 
                 let rtt = 0;
-                let lossRate = 0;
                 const currentPathIdentifier = endToEndPath ? endToEndPath.map(s => s.id).join('-') : "none";
-                if (endToEndPath && totalDistance > 0) {
+                if (totalDistance > 0) {
                     rtt = (totalDistance / C_LIGHT_KM_S) * 2 * 1000;
                     rtt += Math.random() * 10;
-                    let hops = endToEndPath ? endToEndPath.length : 0;
-                    lossRate = 0.2 + hops * 0.01;
                     if (currentPathIdentifier !== lastPathIdentifier && lastPathIdentifier !== "") {
-                        rtt += 50 + Math.random() * 10;
-                        lossRate += 1.5 + Math.random() * 1;
+                        rtt += 50 + Math.random() * 20;
                         logEvent(`路径切换: ${sourceGS.name} ↔ ${destGS.name}. 新路径: ${currentPathIdentifier.replace(/-/g, ' → ')}`);
                     }
-                    lossRate += Math.random() * 0.5;
-                    lossRate = Math.min(lossRate, 100);
                 }
                 lastPathIdentifier = currentPathIdentifier;
 
                 if (!window.rttFrameCount) window.rttFrameCount = 0;
                 window.rttFrameCount++;
-
-                let shouldSample = false;
-                if (window.rttFrameCount % 10 === 0) {
-                    shouldSample = true;
-                }
-                if (!window.lastSampledPathIdentifier) window.lastSampledPathIdentifier = "";
-                if (currentPathIdentifier !== window.lastSampledPathIdentifier) {
-                    shouldSample = true;
-                    window.lastSampledPathIdentifier = currentPathIdentifier;
-                }
-
-                if (isSimulationRunning && shouldSample) {
+                if (window.rttFrameCount) {
                     rttChart.data.labels.push("");
                     rttChart.data.datasets[0].data.push(rtt > 0 ? rtt : null);
                     if (rttChart.data.labels.length > 50) {
@@ -683,36 +521,6 @@
                         rttChart.data.datasets[0].data.shift();
                     }
                     rttChart.update();
-
-                    lossChart.data.labels.push("");
-                    lossChart.data.datasets[0].data.push(lossRate > 0 ? lossRate.toFixed(2) : null);
-                    if (lossChart.data.labels.length > 50) {
-                        lossChart.data.labels.shift();
-                        lossChart.data.datasets[0].data.shift();
-                    }
-                    lossChart.update();
-
-                    // AVERAGE RTT
-                    const recentRtt = rttChart.data.datasets[0].data
-                        .slice(-100)
-                        .filter(v => v !== null && v !== undefined);
-                    if (recentRtt.length > 0) {
-                        const avgRtt = (recentRtt.reduce((a, b) => a + b, 0) / recentRtt.length).toFixed(2);
-                        document.getElementById("avgRtt").textContent = `近100次平均 RTT: ${avgRtt} ms`;
-                    }
-
-                    // AVERAGE LOSSRATE
-                    const recentLoss = lossChart.data.datasets[0].data
-                        .slice(-100)
-                        .filter(v => v !== null && v !== undefined);
-                    if (recentLoss.length > 0) {
-                        const avgLoss = (recentLoss.reduce((a, b) => a + parseFloat(b), 0) / recentLoss.length).toFixed(2);
-                        document.getElementById("avgLoss").textContent = `近100次平均丢包率: ${avgLoss} %`;
-                    }
-                }
-
-                if (isSimulationRunning) {
-                    lastElapsed = now - simulationStartTime;
                 }
             }
 
@@ -720,12 +528,13 @@
             const observer = new ResizeObserver(resizeCanvas);
             observer.observe(canvas.parentElement);
             
+            document.getElementById('numOrbits').addEventListener('input', (e) => { numOrbits = parseInt(e.target.value); document.getElementById('numOrbitsValue').textContent = numOrbits; generateSatellitesAndOrbits(); });
             document.getElementById('orbitInclinationDeg').addEventListener('input', (e) => { orbitInclinationDeg = parseInt(e.target.value); document.getElementById('orbitInclinationDegValue').textContent = orbitInclinationDeg; generateSatellitesAndOrbits(); });
+            document.getElementById('satellitesPerOrbit').addEventListener('input', (e) => { satellitesPerOrbit = parseInt(e.target.value); document.getElementById('satellitesPerOrbitValue').textContent = satellitesPerOrbit; generateSatellitesAndOrbits(); });
             document.getElementById('orbitalHeightKm').addEventListener('input', (e) => { orbitalHeightKm = parseInt(e.target.value); document.getElementById('orbitalHeightKmValue').textContent = orbitalHeightKm; generateSatellitesAndOrbits(); });
             document.getElementById('timeScale').addEventListener('input', (e) => { const currentTime = (performance.now() / 1000 - simulationStartTime) * timeScale; timeScale = parseFloat(e.target.value); document.getElementById('timeScaleValue').textContent = timeScale.toFixed(1); if (timeScale > 0) { simulationStartTime = performance.now() / 1000 - (currentTime / timeScale); } });
-            document.getElementById('toggleEarthRotationBtn').addEventListener('click', () => { isEarthRotatingAutomatically = !isEarthRotatingAutomatically; const button = document.getElementById('toggleEarthRotationBtn'); button.textContent = isEarthRotatingAutomatically ? "关闭地球自转" : "开启地球自转"; button.style.backgroundColor = isEarthRotatingAutomatically ? '#1e40af' : '#dc2626'; });
-            document.getElementById('toggleSimulationBtn').addEventListener('click', () => { const now = performance.now() / 1000; if (isSimulationRunning) { simulationTimeOffset += (now - simulationStartTime) * timeScale; } else { simulationStartTime = now; } isSimulationRunning = !isSimulationRunning; const btn = document.getElementById('toggleSimulationBtn'); btn.textContent = isSimulationRunning ? "暂停动态演示" : "开始动态演示"; btn.style.backgroundColor = isSimulationRunning ? '#dc2626' : '#1e40af'; });
-
+            document.getElementById('toggleEarthRotationBtn').addEventListener('click', () => { isEarthRotatingAutomatically = !isEarthRotatingAutomatically; const button = document.getElementById('toggleEarthRotationBtn'); button.textContent = isEarthRotatingAutomatically ? "关闭地球自转" : "开启地球自转"; button.style.backgroundColor = isEarthRotatingAutomatically ? '#dc2626' : '#1e40af'; });
+            document.getElementById('toggleSatelliteTrailsBtn').addEventListener('click', () => { showSatelliteTrails = !showSatelliteTrails; const button = document.getElementById('toggleSatelliteTrailsBtn'); button.textContent = showSatelliteTrails ? "隐藏卫星轨迹" : "显示卫星轨迹"; button.style.backgroundColor = showSatelliteTrails ? '#dc2626' : '#1e40af'; });
 
             let isDragging = false;
             let startMouseX, startMouseY, initialRotation;
