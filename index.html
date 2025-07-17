@@ -179,6 +179,10 @@
         let earthRotationOffset = 0, simulationStartTime = 0, lastElapsed = 0;
         let viewRotation = [10, -20, 0];
         let lastPathIdentifier = "";
+        
+        // --- DATA STORAGE FOR AVERAGE CALCULATIONS ---
+        let avgRttData = [];  // Stores RTT data for average calculation (every frame, no path switching bonus)
+        let avgLossData = []; // Stores loss rate data for average calculation (every frame, no path switching bonus)
 
         // --- UTILITY FUNCTIONS ---
         const getOrbitalPeriodSeconds = (h) => 2 * Math.PI * Math.sqrt(Math.pow((EARTH_RADIUS_KM + h) * 1000, 3) / MU);
@@ -258,6 +262,8 @@
             }
             lastElapsed = 0;
             earthRotationOffset = 0;
+            // Reset average calculation data when simulation parameters change
+            resetAverageData();
         }
 
         function generateGreatCircle(inclinationDeg, raanDeg, numPoints = 100) {
@@ -365,6 +371,14 @@
                 });
             }
             return null; // No path found
+        }
+
+        // Function to reset average calculation data
+        function resetAverageData() {
+            avgRttData = [];
+            avgLossData = [];
+            document.getElementById("avgRtt").textContent = "近100次平均 RTT: -- ms";
+            document.getElementById("avgLoss").textContent = "近100次平均丢包率: -- %";
         }
         
         // --- MAIN GLOBE RENDERING ---
@@ -665,17 +679,27 @@
                 if (!window.rttFrameCount) window.rttFrameCount = 0;
                 window.rttFrameCount++;
 
-                let shouldSample = false;
+                // --- CHART DISPLAY SAMPLING LOGIC ---
+                // Keep existing logic: every 10 frames + path switching
+                let shouldSampleChart = false;
                 if (window.rttFrameCount % 10 === 0) {
-                    shouldSample = true;
+                    shouldSampleChart = true;
                 }
                 if (!window.lastSampledPathIdentifier) window.lastSampledPathIdentifier = "";
                 if (currentPathIdentifier !== window.lastSampledPathIdentifier) {
-                    shouldSample = true;
+                    shouldSampleChart = true;
                     window.lastSampledPathIdentifier = currentPathIdentifier;
                 }
 
-                if (isSimulationRunning && shouldSample) {
+                // --- AVERAGE CALCULATION SAMPLING LOGIC ---
+                // New logic: every frame, but no additional sampling on path switching
+                let shouldSampleAverage = false;
+                if (isSimulationRunning) {
+                    shouldSampleAverage = true;
+                }
+
+                // Update chart display (existing logic)
+                if (isSimulationRunning && shouldSampleChart) {
                     rttChart.data.labels.push("");
                     rttChart.data.datasets[0].data.push(rtt > 0 ? rtt : null);
                     if (rttChart.data.labels.length > 50) {
@@ -691,22 +715,33 @@
                         lossChart.data.datasets[0].data.shift();
                     }
                     lossChart.update();
+                }
 
-                    // AVERAGE RTT
-                    const recentRtt = rttChart.data.datasets[0].data
-                        .slice(-100)
-                        .filter(v => v !== null && v !== undefined);
+                // Update average calculation data (new logic)
+                if (shouldSampleAverage) {
+                    // Add data to average calculation arrays
+                    avgRttData.push(rtt > 0 ? rtt : null);
+                    avgLossData.push(lossRate > 0 ? lossRate : null);
+                    
+                    // Keep only the last 100 values
+                    if (avgRttData.length > 100) {
+                        avgRttData.shift();
+                    }
+                    if (avgLossData.length > 100) {
+                        avgLossData.shift();
+                    }
+
+                    // Calculate and update average RTT
+                    const recentRtt = avgRttData.filter(v => v !== null && v !== undefined);
                     if (recentRtt.length > 0) {
                         const avgRtt = (recentRtt.reduce((a, b) => a + b, 0) / recentRtt.length).toFixed(2);
                         document.getElementById("avgRtt").textContent = `近100次平均 RTT: ${avgRtt} ms`;
                     }
 
-                    // AVERAGE LOSSRATE
-                    const recentLoss = lossChart.data.datasets[0].data
-                        .slice(-100)
-                        .filter(v => v !== null && v !== undefined);
+                    // Calculate and update average loss rate
+                    const recentLoss = avgLossData.filter(v => v !== null && v !== undefined);
                     if (recentLoss.length > 0) {
-                        const avgLoss = (recentLoss.reduce((a, b) => a + parseFloat(b), 0) / recentLoss.length).toFixed(2);
+                        const avgLoss = (recentLoss.reduce((a, b) => a + b, 0) / recentLoss.length).toFixed(2);
                         document.getElementById("avgLoss").textContent = `近100次平均丢包率: ${avgLoss} %`;
                     }
                 }
